@@ -30,7 +30,7 @@ target_include_directories(join_server PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${Boos
 set_target_properties( join_server PROPERTIES
     CXX_STANDARD 14
     CXX_STANDARD_REQUIRED ON
-    COMPILE_OPTIONS -Wall
+   # COMPILE_OPTIONS -Wall
 )
 
 target_link_libraries(join_server 
