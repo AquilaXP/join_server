@@ -1,5 +1,7 @@
 #include "bd.h"
 
+#include <cstring>
+
 void table::insert( uint32_t id, const std::string& name )
 {
     auto res = m_data.insert( { id,name } );
