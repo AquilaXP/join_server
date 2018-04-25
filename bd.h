@@ -10,10 +10,12 @@
 #include <algorithm>
 #include <iterator>
 #include <map>
+#include <set>
 #include <mutex>
 #include <list>
 #include <vector>
 #include <memory>
+#include <functional>
 
 /*
 INSERT table id name
@@ -21,20 +23,33 @@ TRUNCATE table
 INTERSECTION
 SYMMETRIC_DIFFERENCE
 */
+using callback_res_t = std::function<void( uint32_t, const std::string&, const std::string& )>;
+
 class table
 {
 public:
     void insert( uint32_t id, const std::string& name );
     void truncate();
     uint32_t size() const;
-    static std::vector<std::tuple<uint32_t, std::string, std::string >> intersection( const table& t1, uint32_t size1, const table& t2, uint32_t size2 );
-    static std::vector<std::tuple<uint32_t, std::string, std::string>> symmetric_difference( const table& t1, uint32_t size1, const table& t2, uint32_t size2 );
+
+    static std::vector<std::tuple<uint32_t, std::string, std::string>>
+        intersection( const table& t1, uint32_t size1, const table& t2, uint32_t size2 );
+
+    static void intersection( const table& t1, uint32_t size1, const table& t2, uint32_t size2,
+        callback_res_t send_res );
+
+    static std::vector<std::tuple<uint32_t, std::string, std::string>>
+        symmetric_difference( const table& t1, uint32_t size1, const table& t2, uint32_t size2 );
+
+    static void symmetric_difference( const table& t1, uint32_t size1, const table& t2, uint32_t size2,
+        callback_res_t send_res );
+
     std::vector < std::pair<uint32_t, std::string> > get_table_data() const;
 private:
     std::map<uint32_t, const std::pair<uint32_t, std::string>*> generate_index( uint32_t count ) const;
 
     std::list<std::pair<uint32_t, std::string>> m_table_data;
-    std::map<uint32_t, std::pair<uint32_t, std::string>* > m_index;
+    std::set<uint32_t> m_index;
 };
 
 class bd
@@ -45,7 +60,9 @@ public:
     void insert( const std::string& table_name, uint32_t id, const std::string& name );
     void truncate( const std::string& table_name );
     std::vector<std::tuple<uint32_t, std::string, std::string>> intersection();
+    void intersection( callback_res_t cb );
     std::vector<std::tuple<uint32_t, std::string, std::string>> symmetric_difference();
+    void symmetric_difference( callback_res_t cb );
     std::vector<std::pair<uint32_t, std::string>> select( const std::string& table_name );
 private:
     bd() = default;

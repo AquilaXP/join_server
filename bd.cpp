@@ -1,11 +1,12 @@
 #include "bd.h"
 
+#include <cassert>
 #include <cstring>
 
 void table::insert( uint32_t id, const std::string& name )
 {
-    auto find_id = m_index.find( id );
-    if( find_id != m_index.end() )
+    auto res = m_index.insert( id );
+    if( not res.second )
         throw std::runtime_error( "duplicate " + std::to_string( id ) );
 
     m_table_data.emplace_back( std::make_pair( id, name ) );
@@ -24,10 +25,22 @@ uint32_t table::size() const
 
 std::vector<std::tuple<uint32_t, std::string, std::string >> table::intersection( const table& t1, uint32_t size1, const table& t2, uint32_t size2 )
 {
+    std::vector<std::tuple<uint32_t, std::string, std::string >> res;
+    intersection( t1, size1, t2, size2, [&res]( uint32_t index, const std::string& str1, const std::string& str2 ) 
+    {
+        res.emplace_back( std::make_tuple( index, str1, str2 ) );
+    } );
+
+    return res;
+}
+
+void table::intersection( const table& t1, uint32_t size1, const table& t2, uint32_t size2, callback_res_t send_res )
+{
+    assert( send_res );
+
     auto index1 = t1.generate_index( size1 );
     auto index2 = t2.generate_index( size2 );
 
-    std::vector<std::tuple<uint32_t, std::string, std::string >> res;
     auto first1 = index1.begin();
     auto last1 = index1.end();
 
@@ -42,19 +55,28 @@ std::vector<std::tuple<uint32_t, std::string, std::string >> table::intersection
         {
             if( !( first2->first < first1->first ) )
             {
-                res.emplace_back( std::make_tuple( first1->first, first1->second->second, first2->second->second ) );
+                send_res( first1->first, first1->second->second, first2->second->second );
                 ++first1;
             }
             ++first2;
         }
     }
-
-    return res;
 }
 
 std::vector<std::tuple<uint32_t, std::string, std::string>> table::symmetric_difference( const table& t1, uint32_t size1, const table& t2, uint32_t size2 )
 {
     std::vector<std::tuple<uint32_t, std::string, std::string>> result;
+    symmetric_difference( t1, size1, t2, size2,
+        [&result]( uint32_t index, const std::string& str1, const std::string& str2 ){
+        result.emplace_back( std::make_tuple( index, str1, str2 ) );
+    } );
+    return result;
+}
+
+void table::symmetric_difference( const table& t1, uint32_t size1, const table& t2, uint32_t size2, callback_res_t send_res )
+{
+    assert( send_res );
+
     auto index1 = t1.generate_index( size1 );
     auto index2 = t2.generate_index( size2 );
 
@@ -69,21 +91,20 @@ std::vector<std::tuple<uint32_t, std::string, std::string>> table::symmetric_dif
         {
             for( ; first1 != last1; ++first1 )
             {
-                result.push_back( std::make_tuple( first1->first, first1->second->second, std::string() ) );
-
+                send_res( first1->first, first1->second->second, std::string() );
             }
             break;
         }
 
         if( first1->first < first2->first ){
-            result.push_back( std::make_tuple( first1->first, first1->second->second, std::string() ) );
+            send_res( first1->first, first1->second->second, std::string() );
             ++first1;
         }
         else
         {
             if( first2->first < first1->first )
             {
-                result.push_back( std::make_tuple( first2->first, std::string(), first2->second->second ) );
+                send_res( first2->first, std::string(), first2->second->second );
             }
             else{
                 ++first1;
@@ -94,10 +115,8 @@ std::vector<std::tuple<uint32_t, std::string, std::string>> table::symmetric_dif
 
     for( ; first2 != last2; ++first2 )
     {
-        result.push_back( std::make_tuple( first2->first, std::string(), first2->second->second ) );
+        send_res( first2->first, std::string(), first2->second->second );
     }
-
-    return result;
 }
 
 std::vector < std::pair<uint32_t, std::string> > table::get_table_data() const
@@ -165,6 +184,22 @@ std::vector<std::tuple<uint32_t, std::string, std::string>> bd::intersection()
     return table::intersection( *save_tableA, sizeA, *save_tableB, sizeB );
 }
 
+void bd::intersection( callback_res_t cb )
+{
+    uint32_t sizeA = 0;
+    uint32_t sizeB = 0;
+    std::shared_ptr<table> save_tableA;
+    std::shared_ptr<table> save_tableB;
+    {
+        lock_t lk( m_mutex );
+        save_tableA = m_A;
+        save_tableB = m_B;
+        sizeA = m_A->size();
+        sizeB = m_B->size();
+    }
+    table::intersection( *save_tableA, sizeA, *save_tableB, sizeB, cb );
+}
+
 std::vector<std::tuple<uint32_t, std::string, std::string>> bd::symmetric_difference()
 {
     uint32_t sizeA = 0;
@@ -181,6 +216,22 @@ std::vector<std::tuple<uint32_t, std::string, std::string>> bd::symmetric_differ
     return table::symmetric_difference( *save_tableA, sizeA, *save_tableB, sizeB );
 }
 
+void bd::symmetric_difference( callback_res_t cb )
+{
+    uint32_t sizeA = 0;
+    uint32_t sizeB = 0;
+    std::shared_ptr<table> save_tableA;
+    std::shared_ptr<table> save_tableB;
+    {
+        lock_t lk( m_mutex );
+        save_tableA = m_A;
+        save_tableB = m_B;
+        sizeA = m_A->size();
+        sizeB = m_B->size();
+    }
+    table::symmetric_difference( *save_tableA, sizeA, *save_tableB, sizeB, cb );
+}
+
 std::vector<std::pair<uint32_t, std::string>> bd::select( const std::string& table_name )
 {
     lock_t lk( m_mutex );
@@ -191,6 +242,8 @@ std::vector<std::pair<uint32_t, std::string>> bd::select( const std::string& tab
         return m_A->get_table_data();
     else if( table_name == "B" )
         return m_B->get_table_data();
+
+    return std::vector<std::pair<uint32_t, std::string>>();
 }
 
 parser_commands::parser_commands()
@@ -253,21 +306,22 @@ void parser_commands::push_command( const std::string& cmd )
             if( !end.empty() )
                 throw std::runtime_error( "incorect command INTERSECTION" );
 
-            auto result = bd::instance().intersection();
-            if( m_delegate )
+            std::string line;
+            std::ostringstream ss;
+            bd::instance().intersection( [this,&line,&ss]( uint32_t index, const std::string& str1, const std::string& str2 )
             {
-                std::string line;
-                std::ostringstream ss;
-
-                for( auto& r : result )
+                try
                 {
                     ss.str( std::string() );
-                    print( ss, r );
-                    auto line = ss.str();
+                    ss << index << ',' << str1 << ',' << str2 << '\n';
+                    line = ss.str();
                     m_delegate( line.c_str(), line.size() );
                 }
-                send_ok();
-            }
+                catch( ... )
+                {
+                }
+            });
+            send_ok();
         }
         else if( key_word == "SYMMETRIC_DIFFERENCE" )
         {
@@ -275,21 +329,22 @@ void parser_commands::push_command( const std::string& cmd )
             if( !end.empty() )
                 throw std::runtime_error( "incorect command SYMMETRIC_DIFFERENCE" );
 
-            auto result = bd::instance().symmetric_difference();
-            if( m_delegate )
+            std::string line;
+            std::ostringstream ss;
+            bd::instance().symmetric_difference( [this, &line, &ss]( uint32_t index, const std::string& str1, const std::string& str2 )
             {
-                std::string line;
-                std::ostringstream ss;
-
-                for( auto& r : result )
+                try
                 {
                     ss.str( std::string() );
-                    print( ss, r );
-                    auto line = ss.str();
+                    ss << index << ',' << str1 << ',' << str2 << '\n';
+                    line = ss.str();
                     m_delegate( line.c_str(), line.size() );
                 }
-                send_ok();
-            }
+                catch( ... )
+                {
+                }
+            } );
+            send_ok();
         }
         else if( key_word == "SELECT" )
         {
