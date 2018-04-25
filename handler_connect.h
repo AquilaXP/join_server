@@ -23,6 +23,7 @@ private:
 
     void disconnect();
 
+    bool is_del = false;
     std::deque<std::string> m_out;
     char m_buffer[size_block_read];
     std::string m_line;

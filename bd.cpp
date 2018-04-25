@@ -16,18 +16,28 @@ void table::truncate()
 
 std::vector<std::tuple<uint32_t, std::string, std::string >> table::intersection( const table& t1, const table& t2 )
 {
-    std::vector<std::pair<uint32_t, std::string >> result;
-    std::set_intersection( t1.m_data.begin(), t1.m_data.end(), t2.m_data.begin(), t2.m_data.end(), std::back_inserter( result ),
-        []( const std::pair<uint32_t, std::string >& p1, const std::pair<uint32_t, std::string >& p2 )
-    {
-        return p1.first < p2.first;
-    } );
-
     std::vector<std::tuple<uint32_t, std::string, std::string >> res;
-    for( auto& r : result )
+    auto first1 = t1.m_data.begin();
+    auto last1 = t1.m_data.end();
+
+    auto first2 = t2.m_data.begin();
+    auto last2 = t2.m_data.end();
+
+    while( first1 != last1 && first2 != last2 )
     {
-        res.push_back( std::make_tuple( r.first, t1.m_data.find( r.first )->second, t2.m_data.find( r.first )->second ) );
+        if( first1->first < first2->first )
+            ++first1;
+        else
+        {
+            if( !( first2->first < first1->first ) )
+            {
+                res.emplace_back( std::make_tuple( first1->first, first1->second, first2->second ) );
+                ++first1;
+            }
+            ++first2;
+        }
     }
+
     return res;
 }
 
@@ -116,14 +126,26 @@ void bd::truncate( const std::string& table_name )
 
 std::vector<std::tuple<uint32_t, std::string, std::string>> bd::intersection()
 {
-    lock_t lk( m_mutex );
-    return table::intersection( m_A, m_B );
+    table cpy_a;
+    table cpy_b;
+    {
+        lock_t lk( m_mutex );
+        cpy_a = m_A;
+        cpy_b = m_B;
+    }
+    return table::intersection( cpy_a, cpy_b );
 }
 
 std::vector<std::tuple<uint32_t, std::string, std::string>> bd::symmetric_difference()
 {
-    lock_t lk( m_mutex );
-    return table::symmetric_difference( m_A, m_B );
+    table cpy_a;
+    table cpy_b;
+    {
+        lock_t lk( m_mutex );
+        cpy_a = m_A;
+        cpy_b = m_B;
+    }
+    return table::symmetric_difference( cpy_a, cpy_b );
 }
 
 std::vector<std::pair<uint32_t, std::string>> bd::select( const std::string& table_name )

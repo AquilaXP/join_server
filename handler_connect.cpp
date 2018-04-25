@@ -22,16 +22,12 @@ void handler_connect::do_write()
 {
     boost::asio::async_write(
         m_socket,
-        boost::asio::buffer( m_out.front().data(), m_out.front().length() ),
+        boost::asio::buffer( m_out.back().data(), m_out.back().length() ),
         [this]( boost::system::error_code ec, std::size_t )
     {
         if( !ec )
         {
             m_out.pop_front();
-            if( !m_out.empty() )
-            {
-                do_write();
-            }
         }
         else
         {
@@ -45,12 +41,8 @@ void handler_connect::do_write( const char* data, size_t size )
     std::string msg( data, size );
     m_io_service.post( [this, msg]
     {
-        bool write_in_progress = !m_out.empty();
         m_out.push_back( std::move(msg) );
-        if( !write_in_progress )
-        {
-            do_write();
-        }
+        do_write();
     } );
 }
 
@@ -65,13 +57,13 @@ void handler_connect::do_read()
         if( length != 0 )
             m_gltd.push_data( m_buffer, length );
 
-        if( m_gltd.get_line( m_line ) )
+        while( m_gltd.get_line( m_line ) )
         {
             m_pc.push_command( m_line );
         }
         if( ec || length == 0 )
         {
-            m_server->remove_handler( this );
+            disconnect();
         }
         else
         {
@@ -82,5 +74,11 @@ void handler_connect::do_read()
 
 void handler_connect::disconnect()
 {
-    m_server->remove_handler( this );
+    if( !is_del )
+    {
+        is_del = true;
+        m_socket.close();
+        m_io_service.post( [this](){m_pc.send_data( nullptr ); } );
+        m_server->remove_handler( this );
+    }
 }
