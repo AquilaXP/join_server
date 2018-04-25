@@ -4,24 +4,35 @@
 
 void table::insert( uint32_t id, const std::string& name )
 {
-    auto res = m_data.insert( { id,name } );
-    if( res.second == false )
+    auto find_id = m_index.find( id );
+    if( find_id != m_index.end() )
         throw std::runtime_error( "duplicate " + std::to_string( id ) );
+
+    m_table_data.emplace_back( std::make_pair( id, name ) );
 }
 
 void table::truncate()
 {
-    m_data.clear();
+    m_index.clear();
+    m_table_data.clear();
 }
 
-std::vector<std::tuple<uint32_t, std::string, std::string >> table::intersection( const table& t1, const table& t2 )
+uint32_t table::size() const
 {
-    std::vector<std::tuple<uint32_t, std::string, std::string >> res;
-    auto first1 = t1.m_data.begin();
-    auto last1 = t1.m_data.end();
+    return m_table_data.size();
+}
 
-    auto first2 = t2.m_data.begin();
-    auto last2 = t2.m_data.end();
+std::vector<std::tuple<uint32_t, std::string, std::string >> table::intersection( const table& t1, uint32_t size1, const table& t2, uint32_t size2 )
+{
+    auto index1 = t1.generate_index( size1 );
+    auto index2 = t2.generate_index( size2 );
+
+    std::vector<std::tuple<uint32_t, std::string, std::string >> res;
+    auto first1 = index1.begin();
+    auto last1 = index1.end();
+
+    auto first2 = index2.begin();
+    auto last2 = index2.end();
 
     while( first1 != last1 && first2 != last2 )
     {
@@ -31,7 +42,7 @@ std::vector<std::tuple<uint32_t, std::string, std::string >> table::intersection
         {
             if( !( first2->first < first1->first ) )
             {
-                res.emplace_back( std::make_tuple( first1->first, first1->second, first2->second ) );
+                res.emplace_back( std::make_tuple( first1->first, first1->second->second, first2->second->second ) );
                 ++first1;
             }
             ++first2;
@@ -41,35 +52,38 @@ std::vector<std::tuple<uint32_t, std::string, std::string >> table::intersection
     return res;
 }
 
-std::vector<std::tuple<uint32_t, std::string, std::string>> table::symmetric_difference( const table& t1, const table& t2 )
+std::vector<std::tuple<uint32_t, std::string, std::string>> table::symmetric_difference( const table& t1, uint32_t size1, const table& t2, uint32_t size2 )
 {
     std::vector<std::tuple<uint32_t, std::string, std::string>> result;
-    auto first1 = t1.m_data.begin();
-    auto last1 = t1.m_data.end();
+    auto index1 = t1.generate_index( size1 );
+    auto index2 = t2.generate_index( size2 );
 
-    auto first2 = t2.m_data.begin();
-    auto last2 = t2.m_data.end();
+    auto first1 = index1.begin();
+    auto last1 = index1.end();
+
+    auto first2 = index2.begin();
+    auto last2 = index2.end();
     while( first1 != last1 )
     {
         if( first2 == last2 )
         {
             for( ; first1 != last1; ++first1 )
             {
-                result.push_back( std::make_tuple( first1->first, first1->second, std::string() ) );
+                result.push_back( std::make_tuple( first1->first, first1->second->second, std::string() ) );
 
             }
             break;
         }
 
         if( first1->first < first2->first ){
-            result.push_back( std::make_tuple( first1->first, first1->second, std::string() ) );
+            result.push_back( std::make_tuple( first1->first, first1->second->second, std::string() ) );
             ++first1;
         }
         else
         {
             if( first2->first < first1->first )
             {
-                result.push_back( std::make_tuple( first2->first, std::string(), first2->second ) );
+                result.push_back( std::make_tuple( first2->first, std::string(), first2->second->second ) );
             }
             else{
                 ++first1;
@@ -80,7 +94,7 @@ std::vector<std::tuple<uint32_t, std::string, std::string>> table::symmetric_dif
 
     for( ; first2 != last2; ++first2 )
     {
-        result.push_back( std::make_tuple( first2->first, std::string(), first2->second ) );
+        result.push_back( std::make_tuple( first2->first, std::string(), first2->second->second ) );
     }
 
     return result;
@@ -89,9 +103,20 @@ std::vector<std::tuple<uint32_t, std::string, std::string>> table::symmetric_dif
 std::vector < std::pair<uint32_t, std::string> > table::get_table_data() const
 {
     std::vector < std::pair<uint32_t, std::string> > res;
-    res.reserve( m_data.size() );
-    std::copy( m_data.begin(), m_data.end(), std::back_inserter( res ) );
+    res.reserve( m_table_data.size() );
+    std::copy( m_table_data.begin(), m_table_data.end(), std::back_inserter( res ) );
     return res;
+}
+
+std::map<uint32_t, const std::pair<uint32_t, std::string>*> table::generate_index( uint32_t count ) const
+{
+    std::map<uint32_t, const std::pair<uint32_t, std::string>*> index;
+    uint32_t i = 0;
+    for( auto iter = m_table_data.begin(); i < count; ++i, ++iter )
+    {
+        index.insert( { iter->first, &( *iter ) } );
+    }
+    return index;
 }
 
 bd& bd::instance()
@@ -107,9 +132,9 @@ void bd::insert( const std::string& table_name, uint32_t id, const std::string& 
         throw std::runtime_error( "incorect name table: only A or B" );
 
     if( table_name == "A" )
-        m_A.insert( id, name );
+        m_A->insert( id, name );
     else if( table_name == "B" )
-        m_B.insert( id, name );
+        m_B->insert( id, name );
 }
 
 void bd::truncate( const std::string& table_name )
@@ -119,33 +144,41 @@ void bd::truncate( const std::string& table_name )
         throw std::runtime_error( "incorect name table: only A or B" );
 
     if( table_name == "A" )
-        m_A.truncate();
+        m_A = std::make_shared<table>();
     else if( table_name == "B" )
-        m_B.truncate();
+        m_B = std::make_shared<table>();
 }
 
 std::vector<std::tuple<uint32_t, std::string, std::string>> bd::intersection()
 {
-    table cpy_a;
-    table cpy_b;
+    uint32_t sizeA = 0;
+    uint32_t sizeB = 0;
+    std::shared_ptr<table> save_tableA;
+    std::shared_ptr<table> save_tableB;
     {
         lock_t lk( m_mutex );
-        cpy_a = m_A;
-        cpy_b = m_B;
+        save_tableA = m_A;
+        save_tableB = m_B;
+        sizeA = m_A->size();
+        sizeB = m_B->size();
     }
-    return table::intersection( cpy_a, cpy_b );
+    return table::intersection( *save_tableA, sizeA, *save_tableB, sizeB );
 }
 
 std::vector<std::tuple<uint32_t, std::string, std::string>> bd::symmetric_difference()
 {
-    table cpy_a;
-    table cpy_b;
+    uint32_t sizeA = 0;
+    uint32_t sizeB = 0;
+    std::shared_ptr<table> save_tableA;
+    std::shared_ptr<table> save_tableB;
     {
         lock_t lk( m_mutex );
-        cpy_a = m_A;
-        cpy_b = m_B;
+        save_tableA = m_A;
+        save_tableB = m_B;
+        sizeA = m_A->size();
+        sizeB = m_B->size();
     }
-    return table::symmetric_difference( cpy_a, cpy_b );
+    return table::symmetric_difference( *save_tableA, sizeA, *save_tableB, sizeB );
 }
 
 std::vector<std::pair<uint32_t, std::string>> bd::select( const std::string& table_name )
@@ -155,9 +188,9 @@ std::vector<std::pair<uint32_t, std::string>> bd::select( const std::string& tab
         throw std::runtime_error( "incorect name table: only A or B" );
 
     if( table_name == "A" )
-        return m_A.get_table_data();
+        return m_A->get_table_data();
     else if( table_name == "B" )
-        return m_B.get_table_data();
+        return m_B->get_table_data();
 }
 
 parser_commands::parser_commands()
