@@ -3,7 +3,9 @@ cmake_minimum_required(VERSION 3.2)
 set(PROJECT_VERSION_PATCH $ENV{TRAVIS_BUILD_NUMBER})
 
 project(join_server VERSION 0.0.${PROJECT_VERSION_PATCH})
-
+if(UNIX)
+set(Boost_USE_STATIC_LIBS   ON)
+endif(UNIX)
 find_package(Boost COMPONENTS system date_time regex REQUIRED)
 
 configure_file(version.h.in version.h @ONLY)
